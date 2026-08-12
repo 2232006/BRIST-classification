@@ -21,7 +21,7 @@ import numpy as np
 import tensorflow as tf
 import streamlit as st
 from PIL import Image
-import matplotlib.cm as cm
+import matplotlib
 import gdown
 
 # ----------------------------------------------------------------------------
@@ -244,7 +244,7 @@ def overlay_heatmap_on_image(pil_img, heatmap, alpha=0.45):
     heatmap_img = Image.fromarray(np.uint8(255 * heatmap)).resize((CLS_IMG_SIZE, CLS_IMG_SIZE))
     heatmap_resized = np.array(heatmap_img)
 
-    jet = cm.get_cmap("jet")
+    jet = matplotlib.colormaps["jet"]
     jet_colors = jet(np.arange(256))[:, :3]
     jet_heatmap = jet_colors[heatmap_resized]  # (H, W, 3) in [0,1]
 
