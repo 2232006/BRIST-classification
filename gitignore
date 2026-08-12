@@ -1,0 +1,15 @@
+# Trained model files (downloaded from Google Drive at runtime, not stored in git)
+*.keras
+*.h5
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
