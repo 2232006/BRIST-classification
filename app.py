@@ -182,11 +182,16 @@ def overlay_mask_on_image(pil_img, mask, threshold=0.5, color=(255, 0, 0), alpha
 # ----------------------------------------------------------------------------
 @st.cache_resource
 def build_gradcam_model(_cls_model):
-    """Builds a model that outputs [last_conv_activations, predictions].
-
-    The classifier wraps the EfficientNetB3 backbone as a nested layer
-    (built with pooling='avg'), so we reach inside it to the last conv
-    layer to get spatial feature maps before pooling.
+    """Builds the pieces needed for Grad-CAM without constructing a single
+    Functional Model that spans from the outer model's input into the
+    nested EfficientNet backbone's internal layers (that triggers a
+    "Graph disconnected" error in Keras 3 once the model has been
+    reloaded from disk). Instead we:
+      1) build a small submodel using the backbone's OWN input/output
+         (always consistent, since it's a self-contained Functional model),
+         producing [last_conv_activations, backbone_pooled_output].
+      2) keep the remaining classifier-head layers (Dropout/Dense/...) as
+         a plain list, and apply them imperatively inside GradientTape.
     """
     backbone = None
     for layer in _cls_model.layers:
@@ -196,17 +201,30 @@ def build_gradcam_model(_cls_model):
     if backbone is None:
         raise ValueError("Could not find the EfficientNet backbone layer in the classifier.")
 
-    last_conv_output = backbone.get_layer(GRADCAM_LAYER_NAME).output
-    grad_model = tf.keras.models.Model(
-        inputs=_cls_model.input,
-        outputs=[last_conv_output, _cls_model.output],
+    backbone_submodel = tf.keras.models.Model(
+        inputs=backbone.input,
+        outputs=[backbone.get_layer(GRADCAM_LAYER_NAME).output, backbone.output],
     )
-    return grad_model
+
+    head_layers = [
+        layer for layer in _cls_model.layers
+        if layer is not backbone and not isinstance(layer, tf.keras.layers.InputLayer)
+    ]
+
+    return backbone_submodel, head_layers
 
 
-def make_gradcam_heatmap(grad_model, img_batch, pred_index):
+def make_gradcam_heatmap(grad_parts, img_batch, pred_index):
+    backbone_submodel, head_layers = grad_parts
+
     with tf.GradientTape() as tape:
-        conv_output, predictions = grad_model(img_batch, training=False)
+        conv_output, pooled_output = backbone_submodel(img_batch, training=False)
+        tape.watch(conv_output)
+
+        x = pooled_output
+        for layer in head_layers:
+            x = layer(x, training=False)
+        predictions = x
         class_channel = predictions[:, pred_index]
 
     grads = tape.gradient(class_channel, conv_output)
