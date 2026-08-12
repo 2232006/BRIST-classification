@@ -110,8 +110,14 @@ def ensure_model_downloaded(local_path, drive_id):
 def load_models():
     ensure_model_downloaded(CLS_MODEL_PATH, CLS_MODEL_DRIVE_ID)
     ensure_model_downloaded(SEG_MODEL_PATH, SEG_MODEL_DRIVE_ID)
-    cls_model = tf.keras.models.load_model(CLS_MODEL_PATH)
-    seg_model = tf.keras.models.load_model(SEG_MODEL_PATH, custom_objects=CUSTOM_OBJECTS)
+    # compile=False: we only need these models for inference, not training,
+    # so we skip reloading the optimizer/loss/metrics config entirely.
+    # This avoids deserialization errors caused by TF/Keras version drift
+    # between the training environment and the deployment environment.
+    cls_model = tf.keras.models.load_model(CLS_MODEL_PATH, compile=False)
+    seg_model = tf.keras.models.load_model(
+        SEG_MODEL_PATH, custom_objects=CUSTOM_OBJECTS, compile=False
+    )
     return cls_model, seg_model
 
 
